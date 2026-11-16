@@ -1,1 +1,518 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Турнирная сетка (Double Elimination)</title>
+    <style>
+        :root {
+            --bg-color: #27292d;
+            --header-bg: #3b3e44;
+            --card-bg: #585b61;
+            --seed-bg: #787c82;
+            --border-color: #2c2e33;
+            --line-color: #d0d3d8;
+            --text-main: #ffffff;
+            --text-muted: #c2c5ca;
+            --winner-bg: #3a5a40;
+        }
 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(#35383e 1px, transparent 1px);
+            background-size: 16px 16px;
+            color: var(--text-main);
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        button {
+            background: #4a4e57;
+            color: white;
+            border: 1px solid #686d78;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #5c616c;
+        }
+
+        .hint {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .bracket-wrapper {
+            min-width: 1120px;
+            display: flex;
+            flex-direction: column;
+            gap: 45px;
+        }
+
+        /* Секции верхней и нижней сеток */
+        .section {
+            position: relative;
+        }
+
+        .headers {
+            display: grid;
+            grid-template-columns: repeat(4, 260px);
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .round-header {
+            background-color: var(--header-bg);
+            text-align: center;
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e0e2e5;
+            border-radius: 2px;
+        }
+
+        .round-header.empty {
+            background: transparent;
+        }
+
+        .rounds-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 260px);
+            gap: 24px;
+            position: relative;
+        }
+
+        .round-col {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            position: relative;
+        }
+
+        /* Карточка матча */
+        .match-wrapper {
+            display: flex;
+            align-items: center;
+            position: relative;
+            margin: 10px 0;
+        }
+
+        .match-num {
+            width: 22px;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: right;
+            padding-right: 8px;
+            user-select: none;
+        }
+
+        .match-card {
+            width: 220px;
+            background-color: var(--card-bg);
+            border-radius: 3px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .team-row {
+            display: flex;
+            align-items: center;
+            height: 28px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .team-row:last-child {
+            border-bottom: none;
+        }
+
+        .team-row:hover {
+            background-color: #666a71;
+        }
+
+        .team-row.winner {
+            background-color: #46694f;
+        }
+
+        .seed {
+            width: 28px;
+            height: 100%;
+            background-color: var(--seed-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #e4e6eb;
+            flex-shrink: 0;
+        }
+
+        .team-name {
+            padding: 0 10px;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1;
+        }
+
+        .team-name.placeholder {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* Соединительные линии (SVG поверх сетки) */
+        svg.connectors {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        svg.connectors path {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 2;
+        }
+
+        /* Позиционирование матчей для точного совпадения со скриншотом */
+        .upper-r1 { gap: 14px; }
+        .upper-r2 { justify-content: space-around; padding: 38px 0; }
+        .upper-r3 { justify-content: center; }
+        .upper-r4 { justify-content: center; padding-top: 28px; }
+
+        .lower-r1 { gap: 14px; padding-top: 32px; }
+        .lower-r2 { gap: 14px; }
+        .lower-r3 { justify-content: center; padding-top: 32px; }
+        .lower-r4 { justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button onclick="resetBracket()">Сбросить результаты</button>
+        <span class="hint">Нажмите на команду в матче, чтобы выбрать победителя (проигравший автоматически отправится в нижнюю сетку).</span>
+    </div>
+
+    <div class="bracket-wrapper" id="bracket">
+        <!-- ВЕРХНЯЯ СЕТКА -->
+        <div class="section" id="upper-section">
+            <div class="headers">
+                <div class="round-header">Раунд 1</div>
+                <div class="round-header">Раунд 2</div>
+                <div class="round-header">Полуфиналы</div>
+                <div class="round-header empty"></div>
+            </div>
+
+            <div class="rounds-grid" id="upper-grid">
+                <svg class="connectors" id="upper-svg"></svg>
+
+                <!-- Раунд 1 -->
+                <div class="round-col upper-r1">
+                    <div class="match-wrapper" data-match="1">
+                        <div class="match-num">1</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(1, 0)"><div class="seed">1</div><div class="team-name">zernd + miate</div></div>
+                            <div class="team-row" onclick="selectWinner(1, 1)"><div class="seed">8</div><div class="team-name">Akuma + Kayix</div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="2">
+                        <div class="match-num">2</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(2, 0)"><div class="seed">4</div><div class="team-name">VikuSiK + aStro_Gart1</div></div>
+                            <div class="team-row" onclick="selectWinner(2, 1)"><div class="seed">5</div><div class="team-name">special + Cube</div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="3">
+                        <div class="match-num">3</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(3, 0)"><div class="seed">2</div><div class="team-name">svoloch + BabyNeyz</div></div>
+                            <div class="team-row" onclick="selectWinner(3, 1)"><div class="seed">7</div><div class="team-name">STICMAN + isagi</div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="4">
+                        <div class="match-num">4</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(4, 0)"><div class="seed">3</div><div class="team-name">Slabiy + xKros</div></div>
+                            <div class="team-row" onclick="selectWinner(4, 1)"><div class="seed">6</div><div class="team-name">Daniil + willave</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Раунд 2 -->
+                <div class="round-col upper-r2">
+                    <div class="match-wrapper" data-match="7">
+                        <div class="match-num">7</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(7, 0)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                            <div class="team-row" onclick="selectWinner(7, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="8">
+                        <div class="match-num">8</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(8, 0)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                            <div class="team-row" onclick="selectWinner(8, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Полуфиналы (Матч 12) -->
+                <div class="round-col upper-r3">
+                    <div class="match-wrapper" data-match="12">
+                        <div class="match-num">12</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(12, 0)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                            <div class="team-row" onclick="selectWinner(12, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Гранд-финал (Матч 14) -->
+                <div class="round-col upper-r4">
+                    <div class="match-wrapper" data-match="14">
+                        <div class="match-num">14</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(14, 0)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                            <div class="team-row" onclick="selectWinner(14, 1)"><div class="seed"></div><div class="team-name placeholder">Победители из числа про</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- НИЖНЯЯ СЕТКА -->
+        <div class="section" id="lower-section">
+            <div class="headers">
+                <div class="round-header">Раунд нижней сетки 1</div>
+                <div class="round-header">Раунд нижней сетки 2</div>
+                <div class="round-header">Раунд нижней сетки 3</div>
+                <div class="round-header">Раунд нижней сетки 4</div>
+            </div>
+
+            <div class="rounds-grid" id="lower-grid">
+                <svg class="connectors" id="lower-svg"></svg>
+
+                <!-- Нижняя сетка Раунд 1 -->
+                <div class="round-col lower-r1">
+                    <div class="match-wrapper" data-match="5">
+                        <div class="match-num">5</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(5, 0)"><div class="seed"></div><div class="team-name placeholder">Проигравший 1</div></div>
+                            <div class="team-row" onclick="selectWinner(5, 1)"><div class="seed"></div><div class="team-name placeholder">Проигравший 2</div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="6">
+                        <div class="match-num">6</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(6, 0)"><div class="seed"></div><div class="team-name placeholder">Проигравший 3</div></div>
+                            <div class="team-row" onclick="selectWinner(6, 1)"><div class="seed"></div><div class="team-name placeholder">Проигравший 4</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Нижняя сетка Раунд 2 -->
+                <div class="round-col lower-r2">
+                    <div class="match-wrapper" data-match="10">
+                        <div class="match-num">10</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(10, 0)"><div class="seed"></div><div class="team-name placeholder">Проигравший 8</div></div>
+                            <div class="team-row" onclick="selectWinner(10, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                    <div class="match-wrapper" data-match="9">
+                        <div class="match-num">9</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(9, 0)"><div class="seed"></div><div class="team-name placeholder">Проигравший 7</div></div>
+                            <div class="team-row" onclick="selectWinner(9, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Нижняя сетка Раунд 3 -->
+                <div class="round-col lower-r3">
+                    <div class="match-wrapper" data-match="11">
+                        <div class="match-num">11</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(11, 0)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                            <div class="team-row" onclick="selectWinner(11, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Нижняя сетка Раунд 4 -->
+                <div class="round-col lower-r4">
+                    <div class="match-wrapper" data-match="13">
+                        <div class="match-num">13</div>
+                        <div class="match-card">
+                            <div class="team-row" onclick="selectWinner(13, 0)"><div class="seed"></div><div class="team-name placeholder">Проигравший 12</div></div>
+                            <div class="team-row" onclick="selectWinner(13, 1)"><div class="seed"></div><div class="team-name placeholder"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Логика переходов (куда идет победитель и проигравший)
+        const rules = {
+            1:  { win: [7, 0],  lose: [5, 0] },
+            2:  { win: [7, 1],  lose: [5, 1] },
+            3:  { win: [8, 0],  lose: [6, 0] },
+            4:  { win: [8, 1],  lose: [6, 1] },
+            7:  { win: [12, 0], lose: [9, 0] },
+            8:  { win: [12, 1], lose: [10, 0] },
+            12: { win: [14, 0], lose: [13, 0] },
+            5:  { win: [10, 1], lose: null },
+            6:  { win: [9, 1],  lose: null },
+            10: { win: [11, 0], lose: null },
+            9:  { win: [11, 1], lose: null },
+            11: { win: [13, 1], lose: null },
+            13: { win: [14, 1], lose: null },
+            14: { win: null,    lose: null }
+        };
+
+        const initialState = {
+            1:  [{s: '1', n: 'zernd + miate'}, {s: '8', n: 'Akuma + Kayix'}],
+            2:  [{s: '4', n: 'VikuSiK + aStro_Gart1'}, {s: '5', n: 'special + Cube'}],
+            3:  [{s: '2', n: 'svoloch + BabyNeyz'}, {s: '7', n: 'STICMAN + isagi'}],
+            4:  [{s: '3', n: 'Slabiy + xKros'}, {s: '6', n: 'Daniil + willave'}],
+            5:  [{s: '', n: 'Проигравший 1', p: true}, {s: '', n: 'Проигравший 2', p: true}],
+            6:  [{s: '', n: 'Проигравший 3', p: true}, {s: '', n: 'Проигравший 4', p: true}],
+            7:  [{s: '', n: '', p: true}, {s: '', n: '', p: true}],
+            8:  [{s: '', n: '', p: true}, {s: '', n: '', p: true}],
+            9:  [{s: '', n: 'Проигравший 7', p: true}, {s: '', n: '', p: true}],
+            10: [{s: '', n: 'Проигравший 8', p: true}, {s: '', n: '', p: true}],
+            11: [{s: '', n: '', p: true}, {s: '', n: '', p: true}],
+            12: [{s: '', n: '', p: true}, {s: '', n: '', p: true}],
+            13: [{s: '', n: 'Проигравший 12', p: true}, {s: '', n: '', p: true}],
+            14: [{s: '', n: '', p: true}, {s: '', n: 'Победители из числа про', p: true}]
+        };
+
+        let state = JSON.parse(localStorage.getItem('tournamentState')) || JSON.parse(JSON.stringify(initialState));
+        let winners = JSON.parse(localStorage.getItem('tournamentWinners')) || {};
+
+        function render() {
+            for (const [matchId, teams] of Object.entries(state)) {
+                const wrapper = document.querySelector(`.match-wrapper[data-match="${matchId}"]`);
+                if (!wrapper) continue;
+                const rows = wrapper.querySelectorAll('.team-row');
+                teams.forEach((team, idx) => {
+                    const row = rows[idx];
+                    row.querySelector('.seed').textContent = team.s;
+                    const nameEl = row.querySelector('.team-name');
+                    nameEl.textContent = team.n;
+                    nameEl.classList.toggle('placeholder', !!team.p);
+                    row.classList.toggle('winner', winners[matchId] === idx);
+                });
+            }
+            drawConnectors();
+        }
+
+        function selectWinner(matchId, slotIdx) {
+            const teams = state[matchId];
+            if (!teams[0].n || !teams[1].n || teams[0].p || teams[1].p) return;
+
+            winners[matchId] = slotIdx;
+            const winTeam = { s: teams[slotIdx].s, n: teams[slotIdx].n, p: false };
+            const loseTeam = { s: teams[1 - slotIdx].s, n: teams[1 - slotIdx].n, p: false };
+
+            const rule = rules[matchId];
+            if (rule.win) {
+                state[rule.win[0]][rule.win[1]] = winTeam;
+                delete winners[rule.win[0]];
+            }
+            if (rule.lose) {
+                state[rule.lose[0]][rule.lose[1]] = loseTeam;
+                delete winners[rule.lose[0]];
+            }
+
+            localStorage.setItem('tournamentState', JSON.stringify(state));
+            localStorage.setItem('tournamentWinners', JSON.stringify(winners));
+            render();
+        }
+
+        function resetBracket() {
+            localStorage.removeItem('tournamentState');
+            localStorage.removeItem('tournamentWinners');
+            state = JSON.parse(JSON.stringify(initialState));
+            winners = {};
+            render();
+        }
+
+        function drawConnectors() {
+            drawSectionLines('upper-grid', 'upper-svg', [
+                [1, 7], [2, 7],
+                [3, 8], [4, 8],
+                [7, 12], [8, 12],
+                [12, 14]
+            ], 14);
+
+            drawSectionLines('lower-grid', 'lower-svg', [
+                [5, 10],
+                [6, 9],
+                [10, 11], [9, 11],
+                [11, 13]
+            ]);
+        }
+
+        function drawSectionLines(gridId, svgId, pairs, finalMatch = null) {
+            const grid = document.getElementById(gridId);
+            const svg = document.getElementById(svgId);
+            const gridRect = grid.getBoundingClientRect();
+            svg.innerHTML = '';
+
+            pairs.forEach(([fromId, toId]) => {
+                const fromCard = grid.querySelector(`[data-match="${fromId}"] .match-card`).getBoundingClientRect();
+                const toNum = grid.querySelector(`[data-match="${toId}"] .match-num`).getBoundingClientRect();
+
+                const x1 = fromCard.right - gridRect.left;
+                const y1 = fromCard.top + fromCard.height / 2 - gridRect.top;
+                const x2 = toNum.left - gridRect.left - 2;
+                const y2 = toNum.top + toNum.height / 2 - gridRect.top;
+                const midX = x1 + 12;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${x1} ${y1} H ${midX} V ${y2} H ${x2}`);
+                svg.appendChild(path);
+            });
+
+            if (finalMatch) {
+                const fCard = grid.querySelector(`[data-match="${finalMatch}"] .match-card`).getBoundingClientRect();
+                const x1 = fCard.right - gridRect.left;
+                const y1 = fCard.top + fCard.height / 2 - gridRect.top;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${x1} ${y1} H ${x1 + 20}`);
+                svg.appendChild(path);
+            }
+        }
+
+        window.addEventListener('resize', drawConnectors);
+        render();
+    </script>
+</body>
+</html>
